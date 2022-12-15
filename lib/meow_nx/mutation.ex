@@ -103,4 +103,74 @@ defmodule MeowNx.Mutation do
     mutated = genomes + Nx.random_normal(shape, 0.0, sigma)
     Nx.select(mutate?, mutated, genomes)
   end
+
+  @doc """
+  Performs Bounded Polynomial Mutation
+
+  This mutation operator was first introduced in NSGA
+  and is often incorporated in MOEA's like NSGA, NSGA-II, PAES
+  and SPEA. This implementation is based on original implementation
+  by Deb in NSGA.
+
+  ## Options
+
+    * `:probability` - Probability of each individual genome to be mutated. Required
+
+    * `:lower_bound` - Search space lower bound. Required
+
+    * `:upper_bound` - Search space upper bound. Required
+
+    * `:eta` - Crowding degree fo mutation. Required
+
+  ## References
+
+    * [A DYNAMIC POLYNOMIAL MUTATION FOR EVOLUTIONARY MULTI-OBJECTIVE OPTIMIZATION ALGORITHMS](https://www.worldscientific.com/doi/10.1142/S0218213011000097)
+  """
+  defn bounded_polynomial(genomes, opts \\ []) do
+    opts = keyword!(opts, [:probability, :lower_bound, :upper_bound, :eta])
+
+    shape = Nx.shape(genomes)
+
+    probability = Nx.tensor(opts[:probability]) |> Nx.broadcast(shape)
+    lower_bound = Nx.tensor(opts[:lower_bound]) |> Nx.broadcast(shape)
+    upper_bound = Nx.tensor(opts[:upper_bound]) |> Nx.broadcast(shape)
+    eta = opts[:eta]
+
+    mutate? = Nx.random_uniform(shape, 0.0, 1.0) |> Nx.less(probability)
+    delta_max = Nx.subtract(upper_bound, lower_bound)
+
+    delta1 = Nx.subtract(genomes, lower_bound) |> Nx.divide(delta_max)
+    delta2 = Nx.subtract(upper_bound, genomes) |> Nx.divide(delta_max)
+
+    r = Nx.random_uniform(shape, 0.0, 1.0)
+    r_selector = r |> Nx.less(0.5)
+
+    delta = r_selector |> Nx.select(delta1, delta2)
+    delta_power = Nx.subtract(1, delta) |> Nx.power(eta + 1.0)
+
+    delta_q =
+      r_selector
+      |> Nx.select(
+        delta_power
+        |> Nx.multiply(2)
+        |> Nx.subtract(2)
+        |> Nx.multiply(-1)
+        |> Nx.multiply(r)
+        |> Nx.add(delta_power)
+        |> Nx.power(1 / (eta + 1.0))
+        |> Nx.subtract(1),
+        delta_power
+        |> Nx.multiply(2)
+        |> Nx.subtract(2)
+        |> Nx.multiply(r)
+        |> Nx.subtract(delta_power)
+        |> Nx.add(2)
+        |> Nx.power(1 / (eta + 1))
+        |> Nx.multiply(-1)
+        |> Nx.add(1)
+      )
+
+    mutated = genomes |> Nx.add(Nx.multiply(delta_q, delta_max))
+    Nx.select(mutate?, mutated, genomes)
+  end
 end

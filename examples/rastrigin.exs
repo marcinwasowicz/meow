@@ -1,7 +1,7 @@
 # See notebooks/rastrigin_intro.livemd for more insights
 
 Mix.install([
-  {:meow, "~> 0.1.0-dev", github: "jonatanklosko/meow"},
+  {:meow, "~> 0.1.0-dev", path: "."},
   {:nx, "~> 0.3.0"},
   {:exla, "~> 0.3.0"}
 ])
@@ -75,7 +75,21 @@ alg_branching =
     ])
   )
 
-for {algorithm, idx} <- Enum.with_index([alg_linear, alg_multi, alg_branching]) do
+alg_linear_moea_ops =
+  Meow.objective(&Problem.evaluate/1)
+  |> Meow.add_pipeline(
+    MeowNx.Ops.init_real_random_uniform(100, Problem.size(), -5.12, 5.12),
+    Meow.pipeline([
+      MeowNx.Ops.selection_tournament(1.0),
+      MeowNx.Ops.crossover_simulated_bounded_binary(0.9, -5.12, 5.12, 20.0),
+      MeowNx.Ops.mutation_bounded_polynomial(1, -5.12, 5.12, 20),
+      MeowNx.Ops.log_best_individual(),
+      Meow.Ops.max_generations(5_000)
+    ])
+  )
+
+for {algorithm, idx} <-
+      Enum.with_index([alg_linear, alg_multi, alg_branching, alg_linear_moea_ops]) do
   report = Meow.run(algorithm)
   IO.puts("\n# Algorithm #{idx + 1}\n")
   report |> Meow.Report.format_summary() |> IO.puts()

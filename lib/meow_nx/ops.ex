@@ -159,6 +159,27 @@ defmodule MeowNx.Ops do
   end
 
   @doc """
+  Builds fast non-dominated sort fitness assignment.
+
+  See `MeowNx.Selection.fast_non_dominated_sort/3` for more details.
+  """
+  @doc type: :selection
+  @spec selection_fast_non_dominated_sort() :: Op.t()
+  def selection_fast_non_dominated_sort() do
+    %Op{
+      name: "[Nx] Selection: fast non dominated sort",
+      requires_fitness: true,
+      invalidates_fitness: false,
+      in_representations: @representations,
+      impl: fn population, _ctx ->
+        Population.map_genomes_and_fitness(population, fn genomes, fitness ->
+          Selection.fast_non_dominated_sort(genomes, fitness)
+        end)
+      end
+    }
+  end
+
+  @doc """
   Builds a uniform crossover operation.
 
   See `MeowNx.Crossover.uniform/2` for more details.
@@ -272,6 +293,40 @@ defmodule MeowNx.Ops do
   end
 
   @doc """
+  Builds a simulated bounded binary crossover operation.
+
+  See `MeowNx.Crossover.simulated_bounded_binary/2` for more details.
+  """
+  @doc type: :crossover
+  @spec crossover_simulated_bounded_binary(
+          float() | list(float()),
+          float() | list(float()),
+          float() | list(float()),
+          float()
+        ) ::
+          Op.t()
+  def crossover_simulated_bounded_binary(probability, lower_bound, upper_bound, eta) do
+    opts = [
+      probability: probability,
+      lower_bound: lower_bound,
+      upper_bound: upper_bound,
+      eta: eta
+    ]
+
+    %Op{
+      name: "[Nx] Crossover: simulated bounded binary",
+      requires_fitness: false,
+      invalidates_fitness: true,
+      in_representations: [MeowNx.real_representation()],
+      impl: fn population, _ctx ->
+        Population.map_genomes(population, fn genomes ->
+          Crossover.simulated_bounded_binary(genomes, opts)
+        end)
+      end
+    }
+  end
+
+  @doc """
   Builds a uniform replacement mutation operation.
 
   See `MeowNx.Mutation.replace_uniform/2` for more details.
@@ -335,6 +390,39 @@ defmodule MeowNx.Ops do
       impl: fn population, _ctx ->
         Population.map_genomes(population, fn genomes ->
           Mutation.shift_gaussian(genomes, opts)
+        end)
+      end
+    }
+  end
+
+  @doc """
+  Builds a polynomial bounded mutation operation.
+
+  See `MeowNx.Mutation.bounded_polynomial/2` for more details.
+  """
+  @doc type: :mutation
+  @spec mutation_bounded_polynomial(
+          float() | list(float()),
+          float() | list(float()),
+          float() | list(float()),
+          float()
+        ) :: Op.t()
+  def mutation_bounded_polynomial(probability, lower_bound, upper_bound, eta) do
+    opts = [
+      probability: probability,
+      lower_bound: lower_bound,
+      upper_bound: upper_bound,
+      eta: eta
+    ]
+
+    %Op{
+      name: "[Nx] Mutation: bounded polynomial",
+      requires_fitness: false,
+      invalidates_fitness: true,
+      in_representations: [MeowNx.real_representation()],
+      impl: fn population, _ctx ->
+        Population.map_genomes(population, fn genomes ->
+          Mutation.bounded_polynomial(genomes, opts)
         end)
       end
     }

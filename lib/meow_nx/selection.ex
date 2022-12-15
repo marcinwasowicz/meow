@@ -141,6 +141,82 @@ defmodule MeowNx.Selection do
     take_individuals(genomes, fitness, idx)
   end
 
+  @doc """
+  Performs fast non-dominated sorting.
+
+  Technically it is not selection but rather new fitness assignment.
+  Maps from function valued vector space to parent front space.
+  It can be used further by other selection operators to implement MOEA's
+  such as NSGA-II.
+
+  This is the implementation of fast non-dominated sorting algorithm
+  introduced by Deb in NSGA-II.
+
+  ## References
+
+    * [A Fast and Elitist Multiobjective Genetic Algorithm: NSGA-II](https://ieeexplore.ieee.org/document/996017)
+  """
+  def fast_non_dominated_sort(genomes, fitness, _opts \\ []) do
+    {n, _length} = Nx.shape(fitness)
+
+    pareto_pairwise_relation =
+      Enum.map(0..(n - 1), fn i ->
+        single_fitness = Nx.take(fitness, i)
+        lt = Nx.less(single_fitness, fitness) |> Nx.any(axes: [-1])
+        lq = Nx.less_equal(single_fitness, fitness) |> Nx.all(axes: [-1])
+        Nx.logical_and(lt, lq) |> Nx.to_flat_list()
+      end)
+      |> Nx.tensor()
+
+    reverse_pareto_relation = Nx.transpose(pareto_pairwise_relation)
+
+    domination_count =
+      Enum.map(0..(n - 1), fn i ->
+        Nx.take(reverse_pareto_relation, i) |> Nx.sum() |> Nx.to_number()
+      end)
+      |> Nx.tensor()
+
+    new_fitness_buffer = Nx.tensor(0) |> Nx.broadcast({n})
+
+    new_fitness =
+      get_non_dominated_front_fitness(
+        reverse_pareto_relation,
+        domination_count,
+        0,
+        new_fitness_buffer
+      )
+
+    {genomes, new_fitness}
+  end
+
+  defp get_non_dominated_front_fitness(
+         reverse_pareto_relation,
+         domination_count,
+         front_idx,
+         fitness
+       ) do
+    current_front_indices = Nx.equal(domination_count, 0)
+
+    if current_front_indices |> Nx.logical_not() |> Nx.all() do
+      fitness
+    else
+      domination_count_update =
+        Nx.multiply(reverse_pareto_relation, current_front_indices)
+        |> Nx.sum(axes: [1])
+        |> Nx.add(current_front_indices)
+
+      new_domination_count = Nx.subtract(domination_count, domination_count_update)
+      new_fitness = current_front_indices |> Nx.multiply(front_idx) |> Nx.add(fitness)
+
+      get_non_dominated_front_fitness(
+        reverse_pareto_relation,
+        new_domination_count,
+        front_idx + 1,
+        new_fitness
+      )
+    end
+  end
+
   # Converts points on a "cumulative ruler" to indices
   defnp cumulative_points_to_indices(fitness_cumulative, points) do
     {n} = Nx.shape(fitness_cumulative)

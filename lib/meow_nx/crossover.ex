@@ -224,4 +224,98 @@ defmodule MeowNx.Crossover do
 
     0.5 * ((1 + beta) * x + (1 - beta) * y)
   end
+
+  @doc """
+  Performs Simulated Binary Bounded Crossover
+
+  This crossover operator is often used in MOEA's like NSGA, NSGA-II
+  PEAS and SPEA. This implementation is similar to the one implemented in
+  NSGA-II by Deb.
+
+  ## Options
+
+    * `:probability` - Probability of each couple to be participate in crossover. Required.
+
+    * `:lower_bound` - Search space lower bound. Required.
+
+    * `:upper_bound` - Search space upper bound. Required.
+
+    * `:eta`  - Crowding degree fo crossover. Required.
+
+  ## References
+    * [A Fast and Elitist Multiobjective Genetic Algorithm: NSGA-II](https://ieeexplore.ieee.org/document/996017)
+  """
+
+  defn simulated_bounded_binary(parents, opts \\ []) do
+    opts = keyword!(opts, [:probability, :lower_bound, :upper_bound, :eta])
+
+    shape = Nx.shape(parents)
+    {n, length} = shape
+    half_n = div(n, 2)
+
+    probability = Nx.tensor(opts[:probability]) |> Nx.broadcast(half_n)
+    lower_bound = Nx.tensor(opts[:lower_bound]) |> Nx.broadcast({half_n, length})
+    upper_bound = Nx.tensor(opts[:upper_bound]) |> Nx.broadcast({half_n, length})
+    eta = opts[:eta]
+
+    couples = Nx.reshape(parents, {half_n, 2, length})
+    per_couple_max = Nx.reduce_max(couples, axes: [1])
+    per_couple_min = Nx.reduce_min(couples, axes: [1])
+    per_couple_diff = Nx.subtract(per_couple_max, per_couple_min)
+    per_couple_sum = Nx.add(per_couple_max, per_couple_min)
+
+    beta_l =
+      per_couple_min
+      |> Nx.subtract(lower_bound)
+      |> Nx.divide(per_couple_diff)
+      |> Nx.multiply(2.0)
+      |> Nx.add(1.0)
+
+    alpha_l = beta_l |> Nx.power(-(eta + 1.0)) |> Nx.multiply(-1) |> Nx.add(2.0)
+
+    beta_u =
+      Nx.subtract(upper_bound, per_couple_max)
+      |> Nx.divide(per_couple_diff)
+      |> Nx.multiply(2.0)
+      |> Nx.add(1.0)
+
+    alpha_u = beta_u |> Nx.power(-(eta + 1.0)) |> Nx.multiply(-1) |> Nx.add(2.0)
+
+    r = Nx.random_uniform({half_n, length}, 0.0, 1.0)
+
+    beta_q_l =
+      r
+      |> Nx.less(Nx.divide(1, alpha_l))
+      |> Nx.select(
+        Nx.multiply(r, alpha_l) |> Nx.power(1.0 / (eta + 1.0)),
+        Nx.multiply(r, alpha_l) |> Nx.multiply(-1) |> Nx.add(2.0) |> Nx.power(-1.0 / (eta + 1.0))
+      )
+
+    c_l = Nx.subtract(per_couple_sum, Nx.multiply(beta_q_l, per_couple_diff)) |> Nx.multiply(0.5)
+
+    beta_q_u =
+      r
+      |> Nx.less(Nx.divide(1, alpha_u))
+      |> Nx.select(
+        Nx.multiply(r, alpha_u) |> Nx.power(1.0 / (eta + 1.0)),
+        Nx.multiply(r, alpha_u) |> Nx.multiply(-1) |> Nx.add(2.0) |> Nx.power(-1.0 / (eta + 1.0))
+      )
+
+    c_u = Nx.add(per_couple_sum, Nx.multiply(beta_q_u, per_couple_diff)) |> Nx.multiply(0.5)
+
+    c_l = Nx.max(c_l, lower_bound) |> Nx.min(upper_bound)
+    c_u = Nx.max(c_u, lower_bound) |> Nx.min(upper_bound)
+
+    swap = Nx.random_uniform({half_n, length}, 0.0, 1.0) |> Nx.less(0.5)
+    crossed_first = Nx.select(swap, c_u, c_l)
+    crossed_second = Nx.select(swap, c_l, c_u)
+
+    crossed_couples =
+      Nx.concatenate([crossed_first, crossed_second], axis: 1) |> Nx.reshape({half_n, 2, length})
+
+    couples = Nx.reshape(couples, {half_n, 2, length})
+
+    cross? = Nx.random_uniform(half_n, 0.0, 1.0) |> Nx.less(probability)
+    Nx.select(cross?, crossed_couples, couples) |> Nx.reshape({n, length})
+  end
 end
