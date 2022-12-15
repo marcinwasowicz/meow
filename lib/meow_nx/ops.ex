@@ -164,8 +164,10 @@ defmodule MeowNx.Ops do
   See `MeowNx.Selection.fast_non_dominated_sort/3` for more details.
   """
   @doc type: :selection
-  @spec selection_fast_non_dominated_sort() :: Op.t()
-  def selection_fast_non_dominated_sort() do
+  @spec selection_fast_non_dominated_sort(boolean()) :: Op.t()
+  def selection_fast_non_dominated_sort(descending \\ false) do
+    opts = [descending: descending]
+
     %Op{
       name: "[Nx] Selection: fast non dominated sort",
       requires_fitness: true,
@@ -173,7 +175,7 @@ defmodule MeowNx.Ops do
       in_representations: @representations,
       impl: fn population, _ctx ->
         Population.map_genomes_and_fitness(population, fn genomes, fitness ->
-          Selection.fast_non_dominated_sort(genomes, fitness)
+          Selection.fast_non_dominated_sort(genomes, fitness, opts)
         end)
       end
     }
@@ -453,6 +455,41 @@ defmodule MeowNx.Ops do
         update_in(population.log, fn log ->
           Map.update(log, :best_individual, best_individual, fn individual ->
             Enum.max_by([individual, best_individual], & &1.fitness)
+          end)
+        end)
+      end
+    }
+  end
+
+  @doc """
+  Builds an operation keeping track of the latest best Pareto front.
+  """
+  @doc type: :log
+  @spec log_best_pareto_front() :: Op.t()
+  def log_best_pareto_front() do
+    %Op{
+      name: "[Nx] Log: best pareto front",
+      requires_fitness: true,
+      invalidates_fitness: false,
+      in_representations: @representations,
+      impl: fn population, _ctx ->
+        {genomes, pareto_fronts} =
+          MeowNx.Selection.fast_non_dominated_sort(population.genomes, population.fitness,
+            descending: false
+          )
+
+        best_pareto_front_size = Nx.equal(pareto_fronts, 0) |> Nx.sum() |> Nx.to_number()
+        best_pareto_front_indexes = Nx.argsort(pareto_fronts)[0..(best_pareto_front_size - 1)]
+        best_pareto_front = genomes |> Nx.take(best_pareto_front_indexes)
+
+        best_pareto_front = %{
+          genomes: best_pareto_front,
+          generation: population.generation
+        }
+
+        update_in(population.log, fn log ->
+          Map.update(log, :best_pareto_front, best_pareto_front, fn _front ->
+            best_pareto_front
           end)
         end)
       end

@@ -27,7 +27,8 @@ defmodule Meow.Report do
   def format_summary(report) do
     [
       format_times(report),
-      format_best_individual(report)
+      format_best_individual(report),
+      format_best_pareto_front(report)
     ]
     |> Enum.filter(& &1)
     |> Enum.join("\n\n")
@@ -82,6 +83,24 @@ defmodule Meow.Report do
         Generation: #{generation}
         Genome: #{inspect(genome)}\
         """
+    end
+  end
+
+  defp format_best_pareto_front(report) do
+    report.population_reports
+    |> Enum.map(& &1.population)
+    |> Enum.map(fn %{log: log} -> log[:best_pareto_front] end)
+    |> case do
+      [%{genomes: genomes, generation: generation}] ->
+        """
+        ---- Best Pareto Front ----
+
+        Genomes: #{inspect(genomes)}
+        Generation: #{generation}\
+        """
+
+      _ ->
+        nil
     end
   end
 

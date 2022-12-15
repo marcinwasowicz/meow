@@ -152,11 +152,16 @@ defmodule MeowNx.Selection do
   This is the implementation of fast non-dominated sorting algorithm
   introduced by Deb in NSGA-II.
 
+  ## Options
+
+    * `:descending` - Decides whether to sort in descending order. Optional. Defaults to `false`.
+
   ## References
 
     * [A Fast and Elitist Multiobjective Genetic Algorithm: NSGA-II](https://ieeexplore.ieee.org/document/996017)
   """
-  def fast_non_dominated_sort(genomes, fitness, _opts \\ []) do
+  def fast_non_dominated_sort(genomes, fitness, opts) do
+    descending? = opts[:descending]
     {n, _length} = Nx.shape(fitness)
 
     pareto_pairwise_relation =
@@ -186,7 +191,11 @@ defmodule MeowNx.Selection do
         new_fitness_buffer
       )
 
-    {genomes, new_fitness}
+    if descending? do
+      {genomes, new_fitness |> Nx.multiply(-1)}
+    else
+      {genomes, new_fitness}
+    end
   end
 
   defp get_non_dominated_front_fitness(
@@ -197,12 +206,12 @@ defmodule MeowNx.Selection do
        ) do
     current_front_indices = Nx.equal(domination_count, 0)
 
-    if current_front_indices |> Nx.logical_not() |> Nx.all() do
+    if current_front_indices |> Nx.logical_not() |> Nx.all() == Nx.tensor(true) do
       fitness
     else
       domination_count_update =
         Nx.multiply(reverse_pareto_relation, current_front_indices)
-        |> Nx.sum(axes: [1])
+        |> Nx.sum(axes: [-1])
         |> Nx.add(current_front_indices)
 
       new_domination_count = Nx.subtract(domination_count, domination_count_update)
