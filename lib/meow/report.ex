@@ -28,7 +28,7 @@ defmodule Meow.Report do
     [
       format_times(report),
       format_best_individual(report),
-      format_best_pareto_front(report)
+      format_convergence_metric(report)
     ]
     |> Enum.filter(& &1)
     |> Enum.join("\n\n")
@@ -86,17 +86,23 @@ defmodule Meow.Report do
     end
   end
 
-  defp format_best_pareto_front(report) do
+  defp format_convergence_metric(report) do
     report.population_reports
     |> Enum.map(& &1.population)
-    |> Enum.map(fn %{log: log} -> log[:best_pareto_front] end)
+    |> Enum.map(fn %{log: log} -> log[:convergence_metric] end)
     |> case do
-      [%{genomes: genomes, generation: generation}] ->
+      [
+        %{
+          genomes: genomes,
+          generation: generation,
+          convergence_metric: convergence_metric
+        }
+      ] ->
         """
-        ---- Best Pareto Front ----
-
-        Genomes: #{inspect(genomes)}
-        Generation: #{generation}\
+        ---- Best Convergence Metric ----
+        Convergence Metric: #{convergence_metric}
+        Generation: #{generation}
+        Genomes: #{inspect(genomes)}\
         """
 
       _ ->

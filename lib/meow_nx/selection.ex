@@ -161,7 +161,7 @@ defmodule MeowNx.Selection do
     * [A Fast and Elitist Multiobjective Genetic Algorithm: NSGA-II](https://ieeexplore.ieee.org/document/996017)
   """
   def fast_non_dominated_sort(genomes, fitness, opts) do
-    descending? = opts[:descending]
+    cutoff = opts[:cutoff]
     {n, _length} = Nx.shape(fitness)
 
     pareto_pairwise_relation =
@@ -181,21 +181,24 @@ defmodule MeowNx.Selection do
       end)
       |> Nx.tensor()
 
-    new_fitness_buffer = Nx.tensor(0) |> Nx.broadcast({n})
+    non_dominated_fronts_buffer = Nx.tensor(0) |> Nx.broadcast({n})
 
-    new_fitness =
+    non_dominated_fronts =
       get_non_dominated_front_fitness(
         reverse_pareto_relation,
         domination_count,
         0,
-        new_fitness_buffer
+        non_dominated_fronts_buffer
       )
 
-    if descending? do
-      {genomes, new_fitness |> Nx.multiply(-1)}
-    else
-      {genomes, new_fitness}
-    end
+    non_dominated_fronts_sorted_indices = Nx.argsort(non_dominated_fronts)
+
+    front_sorted_genomes = Nx.take(genomes, non_dominated_fronts_sorted_indices)
+
+    {
+      Nx.slice_along_axis(front_sorted_genomes, 0, cutoff, axis: 0),
+      Nx.slice_along_axis(Nx.sort(non_dominated_fronts), 0, cutoff, axis: 0)
+    }
   end
 
   defp get_non_dominated_front_fitness(
@@ -224,6 +227,45 @@ defmodule MeowNx.Selection do
         new_fitness
       )
     end
+  end
+
+  # Calculates crowding distances for non-dominated front
+  defnp get_crowding_distances(fitness_slice) do
+    {n, m} = Nx.shape(fitness_slice)
+    fitness_slice_T = Nx.transpose(fitness_slice)
+
+    sorted_indices = Nx.argsort(fitness_slice_T, axis: -1)
+    min_fitness = Nx.reduce_min(fitness_slice_T, axes: [-1])
+    max_fitness = Nx.reduce_max(fitness_slice_T, axes: [-1])
+
+    fitness_diff = Nx.subtract(max_fitness, min_fitness)
+
+    normalized_sorted_fitness_slice_T =
+      Nx.subtract(fitness_slice, min_fitness)
+      |> Nx.divide(fitness_diff)
+      |> Nx.sort(axis: -1)
+      |> Nx.transpose()
+
+    prev_fitness_values =
+      Nx.slice_along_axis(normalized_sorted_fitness_slice_T, 0, n - 2, axis: -1)
+
+    next_fitness_values =
+      Nx.slice_along_axis(normalized_sorted_fitness_slice_T, 1, n - 2, axis: -1)
+
+    crowding_distances =
+      Nx.concatenate(
+        [
+          Nx.Constants.infinity() |> Nx.broadcast({m, 1}),
+          Nx.subtract(next_fitness_values, prev_fitness_values),
+          Nx.Constants.infinity() |> Nx.broadcast({m, 1})
+        ],
+        axis: -1
+      )
+
+    crowding_distances
+    |> Nx.take_along_axis(sorted_indices, axis: -1)
+    |> Nx.transpose()
+    |> Nx.sum(axes: [-1])
   end
 
   # Converts points on a "cumulative ruler" to indices

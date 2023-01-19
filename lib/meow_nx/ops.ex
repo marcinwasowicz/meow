@@ -164,9 +164,9 @@ defmodule MeowNx.Ops do
   See `MeowNx.Selection.fast_non_dominated_sort/3` for more details.
   """
   @doc type: :selection
-  @spec selection_fast_non_dominated_sort(boolean()) :: Op.t()
-  def selection_fast_non_dominated_sort(descending \\ false) do
-    opts = [descending: descending]
+  @spec selection_fast_non_dominated_sort(non_neg_integer()) :: Op.t()
+  def selection_fast_non_dominated_sort(cutoff) do
+    opts = [cutoff: cutoff]
 
     %Op{
       name: "[Nx] Selection: fast non dominated sort",
@@ -462,34 +462,46 @@ defmodule MeowNx.Ops do
   end
 
   @doc """
-  Builds an operation keeping track of the latest best Pareto front.
+  Builds an operation keeping track of the latest convergence metric.
+  Multi-objective problems exclusively!
   """
   @doc type: :log
-  @spec log_best_pareto_front() :: Op.t()
-  def log_best_pareto_front() do
+  @spec log_convergence_metric(non_neg_integer(), Nx.tensor({})) :: Op.t()
+  def log_convergence_metric(cutoff, reference_pareto_front) do
     %Op{
-      name: "[Nx] Log: best pareto front",
+      name: "[Nx] Log: best convergence metric",
       requires_fitness: true,
       invalidates_fitness: false,
       in_representations: @representations,
       impl: fn population, _ctx ->
-        {genomes, pareto_fronts} =
+        {genomes, _} =
           MeowNx.Selection.fast_non_dominated_sort(population.genomes, population.fitness,
-            descending: false
+            cutoff: cutoff
           )
 
-        best_pareto_front_size = Nx.equal(pareto_fronts, 0) |> Nx.sum() |> Nx.to_number()
-        best_pareto_front_indexes = Nx.argsort(pareto_fronts)[0..(best_pareto_front_size - 1)]
-        best_pareto_front = genomes |> Nx.take(best_pareto_front_indexes)
+        {population_size, _} = Nx.shape(genomes)
+        {reference_pareto_front_size, dim} = Nx.shape(reference_pareto_front)
 
-        best_pareto_front = %{
-          genomes: best_pareto_front,
-          generation: population.generation
+        convergence_metric =
+          genomes
+          |> Nx.reshape({population_size, 1, dim})
+          |> Nx.broadcast({population_size, reference_pareto_front_size, dim})
+          |> Nx.subtract(reference_pareto_front)
+          |> Nx.power(2)
+          |> Nx.sum(axes: [-1])
+          |> Nx.sqrt()
+          |> Nx.reduce_min(axes: [-1])
+          |> Nx.mean()
+
+        latest_population = %{
+          genomes: genomes,
+          generation: population.generation,
+          convergence_metric: Nx.to_number(convergence_metric)
         }
 
         update_in(population.log, fn log ->
-          Map.update(log, :best_pareto_front, best_pareto_front, fn _front ->
-            best_pareto_front
+          Map.update(log, :convergence_metric, latest_population, fn _population ->
+            latest_population
           end)
         end)
       end
