@@ -194,9 +194,46 @@ defmodule MeowNx.Selection do
     non_dominated_fronts_sorted_indices = Nx.argsort(non_dominated_fronts)
 
     front_sorted_genomes = Nx.take(genomes, non_dominated_fronts_sorted_indices)
+    non_dominated_fronts = Nx.sort(non_dominated_fronts)
+
+    max_front_value = Nx.take(non_dominated_fronts, cutoff - 1)
+
+    max_front_count =
+      Nx.equal(non_dominated_fronts, max_front_value) |> Nx.sum() |> Nx.to_number()
+
+    already_taken_count =
+      Nx.less(non_dominated_fronts, max_front_value) |> Nx.sum() |> Nx.to_number()
+
+    max_front_genomes =
+      Nx.slice_along_axis(
+        front_sorted_genomes,
+        already_taken_count,
+        max_front_count,
+        axis: 0
+      )
+
+    max_front_taken_genomes =
+      if Nx.shape(max_front_genomes) |> elem(0) > 2 do
+        crowding_distances = get_crowding_distances(max_front_genomes)
+        sorted_crowding_distances_indices = Nx.argsort(crowding_distances)
+        sorted_max_front_genomes = Nx.take(max_front_genomes, sorted_crowding_distances_indices)
+        Nx.slice_along_axis(sorted_max_front_genomes, 0, cutoff - already_taken_count, axis: 0)
+      else
+        Nx.slice_along_axis(max_front_genomes, 0, cutoff - already_taken_count, axis: 0)
+      end
+
+    final_genomes =
+      if already_taken_count > 0 do
+        already_taken_genomes =
+          Nx.slice_along_axis(front_sorted_genomes, 0, already_taken_count, axis: 0)
+
+        Nx.concatenate([already_taken_genomes, max_front_taken_genomes], axis: 0)
+      else
+        max_front_taken_genomes
+      end
 
     {
-      Nx.slice_along_axis(front_sorted_genomes, 0, cutoff, axis: 0),
+      final_genomes,
       Nx.slice_along_axis(Nx.sort(non_dominated_fronts), 0, cutoff, axis: 0)
     }
   end

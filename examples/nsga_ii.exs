@@ -9,7 +9,7 @@ Nx.Defn.global_default_options(compiler: EXLA)
 defmodule SchafferProblem do
   import Nx.Defn
 
-  @pareto_front Nx.random_uniform({500, 1}, 0.0, 2.0)
+  @pareto_front_x Nx.random_uniform({500, 1}, 0.0, 2.0)
 
   def size, do: 1
 
@@ -19,7 +19,7 @@ defmodule SchafferProblem do
 
   def name, do: "Schaffer"
 
-  def reference_pareto_front, do: @pareto_front
+  def reference_pareto_front, do: evaluate(@pareto_front_x)
 
   defn evaluate(genomes) do
     Nx.concatenate(
@@ -35,8 +35,8 @@ end
 defmodule FonescaFleming do
   import Nx.Defn
 
-  @pareto_front Nx.random_uniform({500, 1}, Nx.divide(-1, Nx.sqrt(3)), Nx.divide(1, Nx.sqrt(3)))
-                |> Nx.broadcast({500, 3})
+  @pareto_front_x Nx.random_uniform({500, 1}, Nx.divide(-1, Nx.sqrt(3)), Nx.divide(1, Nx.sqrt(3)))
+                  |> Nx.broadcast({500, 3})
 
   def size, do: 3
 
@@ -46,7 +46,7 @@ defmodule FonescaFleming do
 
   def name, do: "Fonesca and Fleming"
 
-  def reference_pareto_front, do: @pareto_front
+  def reference_pareto_front, do: evaluate(@pareto_front_x)
 
   defn evaluate(genomes) do
     Nx.concatenate(
@@ -75,7 +75,7 @@ end
 
 population_size = 100
 
-problems = [FonescaFleming]
+problems = [SchafferProblem, FonescaFleming]
 
 for problem <- problems do
   nsga_ii =

@@ -473,7 +473,7 @@ defmodule MeowNx.Ops do
       requires_fitness: true,
       invalidates_fitness: false,
       in_representations: @representations,
-      impl: fn population, _ctx ->
+      impl: fn population, ctx ->
         {genomes, _} =
           MeowNx.Selection.fast_non_dominated_sort(population.genomes, population.fitness,
             cutoff: cutoff
@@ -483,7 +483,7 @@ defmodule MeowNx.Ops do
         {reference_pareto_front_size, dim} = Nx.shape(reference_pareto_front)
 
         convergence_metric =
-          genomes
+          ctx.evaluate.(genomes)
           |> Nx.reshape({population_size, 1, dim})
           |> Nx.broadcast({population_size, reference_pareto_front_size, dim})
           |> Nx.subtract(reference_pareto_front)
@@ -498,6 +498,8 @@ defmodule MeowNx.Ops do
           generation: population.generation,
           convergence_metric: Nx.to_number(convergence_metric)
         }
+
+        IO.inspect(Nx.to_number(convergence_metric))
 
         update_in(population.log, fn log ->
           Map.update(log, :convergence_metric, latest_population, fn _population ->
